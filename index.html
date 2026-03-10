@@ -44,8 +44,8 @@
       .grid-heading {
         margin-top: 1.4rem;
         margin-bottom: 0;
-        background: var(--surface);
-        border: 1px solid var(--line);
+        background: linear-gradient(150deg, var(--accent-soft), var(--surface));
+        border: 1px solid var(--accent);
         border-radius: var(--radius);
         box-shadow: var(--shadow);
         padding: 0.8rem 1rem;
@@ -53,6 +53,20 @@
 
       .projects-grid > .card {
         grid-column: span 1;
+        border-color: var(--accent);
+        background: linear-gradient(150deg, var(--accent-soft), var(--surface));
+      }
+
+      .selectable-card {
+        cursor: pointer;
+        transition: box-shadow 140ms ease, transform 140ms ease;
+      }
+
+      .selectable-card.is-highlighted {
+        box-shadow:
+          0 0 0 2px rgba(255, 255, 255, 0.92),
+          0 14px 32px rgba(255, 255, 255, 0.5);
+        transform: translateY(-1px);
       }
 
       .project-preview {
@@ -101,10 +115,9 @@
       <h2 class="grid-heading">Active Projects</h2>
       <section class="projects-grid">
         <article class="card">
-          <h2>PEP Talks</h2>
+          <h2><a class="project-title-link" href="peptalks/index.html">PEP Talks</a></h2>
           <p>PEP strategy resources, media, and community channels.</p>
           <div class="cta-row">
-            <a class="btn fill" href="peptalks/index.html">Local PEP Talks Site</a>
             <a class="btn" href="https://www.youtube.com/playlist?list=PLe817kHhDpUuVt0hvGrzmPZuQHDIEJgCh" target="_blank" rel="noopener noreferrer">YouTube Playlist</a>
             <a class="btn" href="https://docs.google.com/presentation/d/1ReUq8zwjFY9XGYvoGui4mDUym4zjDDr1kSMOMMTB03U/edit?usp=sharing" target="_blank" rel="noopener noreferrer">Overview Deck</a>
             <a class="btn" href="https://docs.google.com/presentation/d/13OREG6owep9wmHEGpirr1Uel2mpsHbH6G_jje3WhCN0/edit?usp=sharing" target="_blank" rel="noopener noreferrer">Podcast Deck</a>
@@ -146,29 +159,23 @@
       <h2 class="grid-heading">Community Projects</h2>
       <section class="projects-grid">
         <article class="card">
-          <h2>Maryland Techonomics Event Calendar</h2>
+          <h2><a class="project-title-link" href="https://codecollective.us/calendar.html?city=baltimore" target="_blank" rel="noopener noreferrer">Maryland Techonomics Event Calendar</a></h2>
           <p>Events, data tools, and links for statewide civic coordination.</p>
-          <div class="cta-row">
-            <a class="btn fill" href="https://codecollective.us/calendar.html?city=baltimore" target="_blank" rel="noopener noreferrer">Maryland Techonomics Event Calendar</a>
-          </div>
         </article>
 
         <article class="card">
-          <h2>Maryland Legislation Analyzer</h2>
+          <h2><a class="project-title-link" href="https://codecollective.us/mdbills.html" target="_blank" rel="noopener noreferrer">Maryland Legislation Analyzer</a></h2>
           <p>Events, data tools, and links for statewide civic coordination.</p>
           <img class="project-preview" src="images/previews/maryland-bills-transparency-tool.png" alt="Preview of Maryland Bills Transparency Tool" loading="lazy" />
           <div class="cta-row">
-            <a class="btn fill" href="https://codecollective.us/mdbills.html" target="_blank" rel="noopener noreferrer">Maryland Legislation Analyzer</a>
-            <a class="btn" href="https://codecollective.us/mdbills.html" target="_blank" rel="noopener noreferrer">Example Prototype</a>
             <a class="btn" href="https://mgaleg.maryland.gov/2026rs/misc/billsmasterlist/legislation.json" target="_blank" rel="noopener noreferrer">Legislative Data</a>
           </div>
         </article>
 
         <article class="card spotlight">
-          <h2><a class="project-title-link" href="civic-data-visualization-experiments/index.html">Civic Data Visualization Experiments</a></h2>
+          <h2><a class="project-title-link" href="https://www.qfathom.com/assets/html/TrumpIndictmentsDev2.html" target="_blank" rel="noopener noreferrer">Civic Data Visualization Experiments</a></h2>
           <img class="project-preview" src="images/previews/civic-data-visualization-experiments.png" alt="Preview of Civic Data Visualization Experiments" loading="lazy" />
           <p>Interactive legal and legislative explanation visuals.</p>
-          <a class="btn" href="https://www.qfathom.com/assets/html/TrumpIndictmentsDev2.html" target="_blank" rel="noopener noreferrer">Example</a>
         </article>
       </section>
     </main>
@@ -176,6 +183,7 @@
     <footer>
       <div class="wrap">Contact: maryland@marylandforwardparty.com</div>
     </footer>
+    <script src="scripts/selectable_cards.js"></script>
     <script src="scripts/link_preview_hover.js"></script>
     <script src="peptalks/script.js"></script>
   </body>

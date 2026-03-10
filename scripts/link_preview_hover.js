@@ -13,7 +13,7 @@
 
   const cards = document.querySelectorAll(".projects-grid .card");
   cards.forEach((card) => {
-    const links = [...card.querySelectorAll("a.btn[href]")];
+    const links = [...card.querySelectorAll("a.project-title-link[href], a.btn[href]")];
     if (!links.length) return;
 
     const linksWithPreviews = links.filter((link) => {
