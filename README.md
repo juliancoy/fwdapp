@@ -1,5 +1,7 @@
 # Maryland Forward Party – Civic Technology Ideas
 
+![Background image](images/background.avif)
+
 This repository collects potential civic technology projects discussed within the Maryland Forward Party community.  
 Each idea below represents a possible open-source project that volunteers could build collaboratively.
 
