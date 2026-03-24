@@ -85,6 +85,35 @@
         }
       }
 
+      .wix-auth-container {
+        display: flex;
+        align-items: center;
+        margin-left: 1rem;
+      }
+
+      .wix-user-menu {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+      }
+
+      #wix-user-name {
+        color: var(--text);
+        font-size: 0.9rem;
+      }
+
+      .btn-small {
+        padding: 0.4rem 0.8rem;
+        font-size: 0.85rem;
+      }
+
+      @media (max-width: 720px) {
+        .wix-auth-container {
+          margin-left: 0;
+          margin-top: 0.5rem;
+        }
+      }
+
     </style>
   </head>
   <body>
@@ -104,6 +133,13 @@
           <a href="peptalks/roles.html">Roles</a>
           <a href="peptalks/pep-talk.html">PEP Talk</a>
         </nav>
+        <div id="wix-auth-container" class="wix-auth-container">
+          <button id="wix-login-btn" class="btn btn-small" style="display: none;">Log In</button>
+          <div id="wix-user-menu" class="wix-user-menu" style="display: none;">
+            <span id="wix-user-name"></span>
+            <button id="wix-logout-btn" class="btn btn-small">Log Out</button>
+          </div>
+        </div>
       </div>
     </header>
 
@@ -186,5 +222,151 @@
     <script src="scripts/selectable_cards.js"></script>
     <script src="scripts/link_preview_hover.js"></script>
     <script src="peptalks/script.js"></script>
+    <script>
+      // Wix JWT Token Authentication Integration
+      // Flow: User logs into Wix main site -> Wix Velo generates JWT -> User clicks link with ?token=... -> This app verifies token
+      (function() {
+        // Configuration - update these values
+        const WIX_MAIN_SITE = 'https://www.marylandforwardparty.com';
+        const TOKEN_KEY = 'wix_member_token';
+        const TOKEN_EXPIRY_KEY = 'wix_token_expiry';
+        
+        const loginBtn = document.getElementById('wix-login-btn');
+        const logoutBtn = document.getElementById('wix-logout-btn');
+        const userMenu = document.getElementById('wix-user-menu');
+        const userName = document.getElementById('wix-user-name');
+
+        // Decode JWT without verification (Wix should provide verification endpoint or use jwks)
+        function parseJwt(token) {
+          try {
+            const parts = token.split('.');
+            if (parts.length !== 3) return null;
+            
+            const base64Url = parts[1];
+            const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+            const jsonPayload = decodeURIComponent(atob(base64).split('').map(function(c) {
+              return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+            }).join(''));
+            return JSON.parse(jsonPayload);
+          } catch (e) {
+            console.error('Failed to parse JWT:', e);
+            return null;
+          }
+        }
+
+        // Verify token signature (placeholder - implement with Wix JWKS or backend endpoint)
+        async function verifyToken(token) {
+          // TODO: Implement proper JWT verification
+          // Option 1: Call your backend endpoint that verifies with Wix JWKS
+          // Option 2: Use Wix public key to verify locally
+          // For now, we decode and check expiration
+          const payload = parseJwt(token);
+          if (!payload) return null;
+          
+          // Check expiration
+          if (payload.exp && Date.now() >= payload.exp * 1000) {
+            console.log('Token expired');
+            return null;
+          }
+          
+          return payload;
+        }
+
+        function showLoggedIn(user) {
+          loginBtn.style.display = 'none';
+          userMenu.style.display = 'flex';
+          // Wix member token typically contains: id, memberId, email, name, etc.
+          userName.textContent = user.name || user.displayName || user.email || 'Member';
+        }
+
+        function showLoggedOut() {
+          loginBtn.style.display = 'inline-block';
+          userMenu.style.display = 'none';
+        }
+
+        function clearAuth() {
+          localStorage.removeItem(TOKEN_KEY);
+          localStorage.removeItem(TOKEN_EXPIRY_KEY);
+          localStorage.removeItem('wix_user');
+        }
+
+        // Handle token from URL query param (from Wix main site redirect)
+        async function handleTokenFromUrl() {
+          const urlParams = new URLSearchParams(window.location.search);
+          const token = urlParams.get('token');
+          
+          if (token) {
+            const userInfo = await verifyToken(token);
+            
+            if (userInfo) {
+              localStorage.setItem(TOKEN_KEY, token);
+              localStorage.setItem(TOKEN_EXPIRY_KEY, userInfo.exp || '');
+              localStorage.setItem('wix_user', JSON.stringify(userInfo));
+              
+              // Clean up URL - remove token from address bar
+              const cleanUrl = window.location.pathname + window.location.hash;
+              window.history.replaceState({}, document.title, cleanUrl);
+              
+              showLoggedIn(userInfo);
+              return true;
+            } else {
+              console.error('Invalid token received');
+              clearAuth();
+            }
+          }
+          return false;
+        }
+
+        // Check for existing session in localStorage
+        async function checkAuthState() {
+          const token = localStorage.getItem(TOKEN_KEY);
+          const userJson = localStorage.getItem('wix_user');
+          const expiry = localStorage.getItem(TOKEN_EXPIRY_KEY);
+          
+          if (token && userJson) {
+            // Check if token is expired
+            if (expiry && Date.now() >= parseInt(expiry) * 1000) {
+              clearAuth();
+              showLoggedOut();
+              return;
+            }
+            
+            // Re-verify token
+            const userInfo = await verifyToken(token);
+            if (userInfo) {
+              showLoggedIn(userInfo);
+            } else {
+              clearAuth();
+              showLoggedOut();
+            }
+          } else {
+            showLoggedOut();
+          }
+        }
+
+        // Login button - redirect to Wix main site login
+        loginBtn.addEventListener('click', function() {
+          // Redirect to Wix main site with return URL
+          const returnUrl = encodeURIComponent(window.location.href);
+          window.location.href = `${WIX_MAIN_SITE}/account/login?returnUrl=${returnUrl}`;
+        });
+
+        // Logout button
+        logoutBtn.addEventListener('click', function() {
+          clearAuth();
+          showLoggedOut();
+          // Optionally redirect to Wix logout
+          // window.location.href = `${WIX_MAIN_SITE}/logout`;
+        });
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', async function() {
+          const handledFromUrl = await handleTokenFromUrl();
+          if (!handledFromUrl) {
+            await checkAuthState();
+          }
+        });
+      })();
+    </script>
   </body>
 </html>
