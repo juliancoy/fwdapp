@@ -66,3 +66,46 @@ def test_is_chair():
     room.members.append(Member(id="u2", name="Bob"))
     assert _is_chair(room, "u1") is True
     assert _is_chair(room, "u2") is False
+
+import pytest_asyncio
+
+@pytest.mark.asyncio
+async def test_advance_speaker_no_queue():
+    import server as srv
+    srv.rooms.clear(); srv.connections.clear(); srv._timer_tasks.clear()
+    room = Room(room_id="r1", phase="floor_held",
+                current_speaker="u1", speaker_queue=[])
+    room.members.append(Member(id="u1", name="Alice"))
+    srv.rooms["r1"] = room
+    srv.connections["r1"] = {}
+    await srv._advance_speaker("r1")
+    assert room.phase == "open"
+    assert room.current_speaker is None
+
+@pytest.mark.asyncio
+async def test_advance_speaker_with_queue():
+    import server as srv
+    srv.rooms.clear(); srv.connections.clear(); srv._timer_tasks.clear()
+    room = Room(room_id="r2", phase="floor_held",
+                current_speaker="u1", speaker_queue=["u2"],
+                speaker_time=60)
+    room.members += [Member(id="u1", name="Alice"), Member(id="u2", name="Bob")]
+    srv.rooms["r2"] = room
+    srv.connections["r2"] = {}
+    await srv._advance_speaker("r2")
+    assert room.current_speaker == "u2"
+    assert room.phase == "floor_held"
+    assert room.timer_remaining == 60
+    # Cancel the new timer so it doesn't run during test
+    srv._cancel_task(srv._timer_tasks, "r2")
+
+@pytest.mark.asyncio
+async def test_advance_speaker_guard_double_call():
+    import server as srv
+    srv.rooms.clear(); srv.connections.clear(); srv._timer_tasks.clear()
+    room = Room(room_id="r3", phase="open", current_speaker=None)
+    srv.rooms["r3"] = room
+    srv.connections["r3"] = {}
+    # Should be a no-op
+    await srv._advance_speaker("r3")
+    assert room.phase == "open"

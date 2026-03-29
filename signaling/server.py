@@ -127,3 +127,98 @@ async def _send_error(ws: WebSocket, message: str) -> None:
         await ws.send_text(json.dumps({"type": "error", "message": message}))
     except Exception:
         pass
+
+# ── Timer & background tasks ──────────────────────────────────────────────────
+async def _run_speaker_timer(room_id: str) -> None:
+    """Ticks speaker timer every second; auto-advances at 0."""
+    try:
+        while True:
+            await asyncio.sleep(1)
+            room = rooms.get(room_id)
+            if not room or room.current_speaker is None:
+                return
+            room.timer_remaining = max(0, room.timer_remaining - 1)
+            await _broadcast_state(room_id)
+            if room.timer_remaining == 0:
+                await _advance_speaker(room_id)
+                return
+    except asyncio.CancelledError:
+        pass
+
+async def _advance_speaker(room_id: str) -> None:
+    """Grant floor to next speaker. Guards against double-call via current_speaker check."""
+    room = rooms.get(room_id)
+    if not room or room.current_speaker is None:
+        return  # already advanced — guard
+
+    _cancel_task(_timer_tasks, room_id)
+
+    prev = _get_member(room, room.current_speaker)
+    if prev:
+        prev.hand_raised = False
+    room.current_speaker = None
+
+    if room.speaker_queue:
+        next_id = room.speaker_queue.pop(0)
+        room.current_speaker = next_id
+        room.timer_remaining = room.speaker_time
+        room.phase = "floor_held"
+        _timer_tasks[room_id] = asyncio.create_task(_run_speaker_timer(room_id))
+    else:
+        room.phase = "open"
+
+    await _broadcast_state(room_id)
+
+async def _motion_pending_timeout(room_id: str) -> None:
+    try:
+        await asyncio.sleep(MOTION_PENDING_TIMEOUT)
+        room = rooms.get(room_id)
+        if room and room.phase == "motion_pending":
+            await _restore_prev_phase(room_id)
+    except asyncio.CancelledError:
+        pass
+
+async def _seconded_timeout(room_id: str) -> None:
+    try:
+        await asyncio.sleep(SECONDED_TIMEOUT)
+        room = rooms.get(room_id)
+        if room and room.phase == "seconded":
+            room.phase = "open"
+            room.motion = None
+            # Clear saved prev-state to prevent stale data
+            room._prev_phase = room._prev_speaker = None
+            room._prev_timer = 0
+            await _broadcast_state(room_id)
+    except asyncio.CancelledError:
+        pass
+
+async def _restore_prev_phase(room_id: str) -> None:
+    room = rooms.get(room_id)
+    if not room:
+        return
+    _cancel_task(_motion_tasks, room_id)
+    room.motion   = None
+    room.phase    = room._prev_phase or "open"
+    room.current_speaker = room._prev_speaker
+    room.timer_remaining = room._prev_timer
+    room._prev_phase = room._prev_speaker = None
+    room._prev_timer = 0
+    if room.current_speaker and room.phase == "floor_held":
+        _timer_tasks[room_id] = asyncio.create_task(_run_speaker_timer(room_id))
+    await _broadcast_state(room_id)
+
+async def _close_vote(room_id: str) -> None:
+    room = rooms.get(room_id)
+    if not room or not room.motion:
+        return
+    yea = room.motion.votes["yea"]
+    nay = room.motion.votes["nay"]
+    room.motion.result = "passed" if yea > nay else "failed"
+    room.phase = "vote_closed"
+    await _broadcast_state(room_id)
+    await asyncio.sleep(VOTE_CLOSED_DISPLAY)
+    room = rooms.get(room_id)
+    if room:
+        room.phase  = "open"
+        room.motion = None
+        await _broadcast_state(room_id)
