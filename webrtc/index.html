@@ -100,10 +100,16 @@ const TOKEN_KEY = 'wix_member_token';
 const token = localStorage.getItem(TOKEN_KEY);
 if (!token) {
     window.location.href = '../index.html';
+    throw new Error('unauthenticated');
 }
 
 // ── Room ID from URL or default ──────────────────────────────────────────────
-const roomId = new URLSearchParams(window.location.search).get('room') || 'main';
+const roomId = new URLSearchParams(window.location.search).get('room');
+if (!roomId) {
+    document.getElementById('error-banner').textContent = 'No room specified. Please use a valid meeting link.';
+    document.getElementById('error-banner').style.display = '';
+    throw new Error('no room specified');
+}
 document.getElementById('room-name').textContent = `Room: ${roomId}`;
 
 // ── Wire up modules ──────────────────────────────────────────────────────────
