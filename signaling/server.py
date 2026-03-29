@@ -26,6 +26,7 @@ class Member:
     name: str
     is_chair: bool = False
     hand_raised: bool = False
+    is_guest: bool = False
 
 @dataclass
 class Motion:
@@ -81,7 +82,8 @@ def _room_to_dict(room: Room) -> dict:
         "phase": room.phase,
         "members": [
             {"id": m.id, "name": m.name,
-             "is_chair": m.is_chair, "hand_raised": m.hand_raised}
+             "is_chair": m.is_chair, "hand_raised": m.hand_raised,
+             "is_guest": m.is_guest}
             for m in room.members
         ],
         "speaker_queue": list(room.speaker_queue),
@@ -239,7 +241,11 @@ async def _handle_leave(room_id: str, member_id: str) -> None:
         return
 
     if was_chair:
-        room.members[0].is_chair = True
+        # Promote first non-guest member to chair; skip guests
+        for m in room.members:
+            if not m.is_guest:
+                m.is_chair = True
+                break
 
     if was_speaker:
         room.current_speaker = None  # clear before advance to prevent double-call
@@ -367,6 +373,9 @@ async def _handle_message(room_id: str, member_id: str,
     if mtype == "cast_vote":
         if room.phase != "voting" or not room.motion:
             return await _send_error(ws, "not in voting phase")
+        m = _get_member(room, member_id)
+        if m and m.is_guest:
+            return await _send_error(ws, "guests cannot vote")
         if member_id in room.motion.member_votes:
             return await _send_error(ws, "already voted")
         vote = msg.get("vote")
@@ -374,7 +383,8 @@ async def _handle_message(room_id: str, member_id: str,
             return await _send_error(ws, "vote must be yea, nay, or abstain")
         room.motion.member_votes[member_id] = vote
         room.motion.votes[vote] += 1
-        if len(room.motion.member_votes) >= len(room.members):
+        eligible_voters = sum(1 for m in room.members if not m.is_guest)
+        if len(room.motion.member_votes) >= eligible_voters:
             if room_id not in _vote_tasks or _vote_tasks[room_id].done():
                 _vote_tasks[room_id] = asyncio.create_task(_close_vote(room_id))
         else:
@@ -412,22 +422,31 @@ async def ws_endpoint(websocket: WebSocket, room_id: str) -> None:
         if msg.get("type") != "join":
             await _send_error(websocket, "first message must be join")
             return await websocket.close()
-        try:
-            claims = _validate_jwt(msg["token"])
-        except Exception:
-            await _send_error(websocket, "unauthorized")
-            return await websocket.close()
 
-        member_id = claims["sub"]
-        name      = claims.get("name") or member_id
+        is_guest = False
+        if msg.get("guest"):
+            # Guest access — no JWT required
+            import uuid
+            member_id = f"guest-{uuid.uuid4().hex[:8]}"
+            name      = (msg.get("name") or "").strip() or f"Guest"
+            is_guest  = True
+        else:
+            try:
+                claims = _validate_jwt(msg.get("token", ""))
+            except Exception:
+                await _send_error(websocket, "unauthorized")
+                return await websocket.close()
+            member_id = claims["sub"]
+            name      = claims.get("name") or member_id
 
         if room_id not in rooms:
             rooms[room_id]       = Room(room_id=room_id)
             connections[room_id] = {}
 
         room     = rooms[room_id]
-        is_chair = len(room.members) == 0
-        room.members.append(Member(id=member_id, name=name, is_chair=is_chair))
+        # Guests can never be chair; only the first authenticated member gets chair
+        is_chair = len(room.members) == 0 and not is_guest
+        room.members.append(Member(id=member_id, name=name, is_chair=is_chair, is_guest=is_guest))
         connections[room_id][member_id] = websocket
 
         await websocket.send_text(json.dumps({"type": "welcome", "self_id": member_id}))

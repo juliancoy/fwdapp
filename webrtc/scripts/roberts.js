@@ -87,7 +87,8 @@ export class RobertsUI {
         this.#show('btn-withdraw',  ['motion_pending', 'seconded'].includes(phase) && motion?.moved_by === this.#selfId);
         this.#show('btn-call-vote', phase === 'seconded' && isChair);
 
-        // Voting section
+        // Voting section — guests can see tallies but not vote
+        const amGuest = me?.is_guest ?? false;
         this.#show('voting-section', phase === 'voting');
         if (phase === 'voting' && motion) {
             this.#text('vote-yea-count',     String(motion.votes.yea));
@@ -96,7 +97,7 @@ export class RobertsUI {
             const hasVoted = motion.member_votes[this.#selfId] !== undefined;
             ['btn-yea', 'btn-nay', 'btn-abstain'].forEach(id => {
                 const btn = document.getElementById(id);
-                if (btn) btn.disabled = hasVoted;
+                if (btn) btn.disabled = hasVoted || amGuest;
             });
         }
 

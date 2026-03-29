@@ -96,11 +96,18 @@ import { RobertsUI }       from './scripts/roberts.js';
 // Inlined here to keep this module self-contained without a cross-directory import.
 const TOKEN_KEY = 'wix_member_token';
 
-// ── Auth gate ────────────────────────────────────────────────────────────────
+// ── Auth gate — members use JWT, guests enter a name ─────────────────────────
 const token = localStorage.getItem(TOKEN_KEY);
+let isGuest = false;
+let guestName = '';
 if (!token) {
-    window.location.href = '../index.html';
-    throw new Error('unauthenticated');
+    guestName = prompt('No member account found. Enter your name to join as a guest (or cancel to go back):');
+    if (!guestName?.trim()) {
+        window.location.href = '../index.html';
+        throw new Error('cancelled guest login');
+    }
+    guestName = guestName.trim();
+    isGuest = true;
 }
 
 // ── Room ID from URL or default ──────────────────────────────────────────────
@@ -177,7 +184,7 @@ function showError(msg) {
     setTimeout(() => { el.style.display = 'none'; }, 5000);
 }
 
-signaling.connect(token, roomId);
+signaling.connect(token, roomId, { guest: isGuest, name: guestName });
 </script>
 </body>
 </html>

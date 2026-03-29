@@ -7,11 +7,13 @@ export class SignalingClient extends EventTarget {
     #ws = null;
     #token = null;
     #roomId = null;
+    #guestOpts = null;
     #reconnectDelay = 2000;
 
-    connect(token, roomId) {
-        this.#token  = token;
-        this.#roomId = roomId;
+    connect(token, roomId, guestOpts = {}) {
+        this.#token     = token || '__guest__';  // truthy so reconnect works for guests
+        this.#roomId    = roomId;
+        this.#guestOpts = guestOpts;
         this.#open();
     }
 
@@ -31,11 +33,10 @@ export class SignalingClient extends EventTarget {
         this.#ws = new WebSocket(`${WS_URL}/ws/${this.#roomId}`);
 
         this.#ws.onopen = () => {
-            this.#ws.send(JSON.stringify({
-                type: 'join',
-                token: this.#token,
-                room_id: this.#roomId,
-            }));
+            const joinMsg = this.#guestOpts?.guest
+                ? { type: 'join', guest: true, name: this.#guestOpts.name, room_id: this.#roomId }
+                : { type: 'join', token: this.#token, room_id: this.#roomId };
+            this.#ws.send(JSON.stringify(joinMsg));
         };
 
         this.#ws.onmessage = ({ data }) => {
