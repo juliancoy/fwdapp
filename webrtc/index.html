@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Meeting Room — MD Forward Party</title>
+    <meta name="description" content="Real-time Roberts Rules meeting room for Maryland Forward Party members." />
+    <link rel="icon" type="image/png" href="../images/favicon.png" />
+    <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+<div id="error-banner" style="display:none;"></div>
+
+<div class="meeting-layout">
+
+    <!-- Header -->
+    <header class="meeting-header">
+        <a href="../index.html" style="font-weight:700;color:var(--accent);text-decoration:none;">← FWD App</a>
+        <span id="room-name" style="font-weight:600;"></span>
+        <span id="phase-badge">open</span>
+        <span id="member-count" style="margin-left:auto;font-size:0.85rem;color:var(--muted);"></span>
+    </header>
+
+    <!-- Video grid -->
+    <section aria-label="Video grid" id="video-grid"></section>
+
+    <!-- Sidebar: speaker info + queue -->
+    <aside class="meeting-sidebar">
+        <div class="speaker-info">
+            <div id="current-speaker"></div>
+            <div id="timer-display"></div>
+        </div>
+
+        <div>
+            <strong style="font-size:0.8rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;">Speaker Queue</strong>
+            <ol id="speaker-queue"></ol>
+        </div>
+
+        <button id="btn-raise-hand"   class="btn" style="display:none;">✋ Raise Hand</button>
+        <button id="btn-yield-floor" class="btn" style="display:none;">⏭ Yield Floor</button>
+
+        <!-- Chair controls -->
+        <div id="chair-controls" style="display:none;">
+            <label style="font-size:0.8rem;color:var(--muted);">
+                Speaker time (s)
+                <input id="speaker-time-input" type="number" min="10" max="600" value="60"
+                    style="width:60px;margin-left:.4rem;" />
+            </label>
+            <button id="btn-set-time" class="btn btn-small">Set</button>
+        </div>
+    </aside>
+
+    <!-- Bottom toolbar -->
+    <div class="meeting-toolbar" role="toolbar" aria-label="Meeting controls">
+
+        <!-- Active motion display -->
+        <div id="motion-section" style="display:none;">
+            <div id="motion-text"></div>
+            <div id="motion-meta"></div>
+        </div>
+
+        <button id="btn-second"    class="btn" style="display:none;">Second Motion</button>
+        <button id="btn-withdraw"  class="btn" style="display:none;">Withdraw</button>
+        <button id="btn-call-vote" class="btn" style="display:none;">Call Vote</button>
+
+        <!-- Voting -->
+        <div id="voting-section" style="display:none;">
+            <button id="btn-yea"     class="btn">✅ Yea</button>
+            <button id="btn-nay"     class="btn">❌ Nay</button>
+            <button id="btn-abstain" class="btn">⬜ Abstain</button>
+            <span class="vote-tally">
+                Yea: <strong id="vote-yea-count">0</strong>
+                Nay: <strong id="vote-nay-count">0</strong>
+                Abs: <strong id="vote-abstain-count">0</strong>
+            </span>
+        </div>
+
+        <span id="vote-result" style="display:none;"></span>
+
+        <!-- Make motion form -->
+        <form id="motion-form" style="display:none;" aria-label="Make a motion">
+            <input id="motion-input" type="text" placeholder="I move to…"
+                   aria-label="Motion text" maxlength="200" />
+            <button class="btn" type="submit">Move</button>
+        </form>
+    </div>
+
+</div><!-- .meeting-layout -->
+
+<script type="module">
+import { SignalingClient } from './scripts/signaling.js';
+import { MeetingClient }   from './scripts/meeting.js';
+import { RobertsUI }       from './scripts/roberts.js';
+
+// TOKEN_KEY matches the value exported by scripts/config.js (best practices cleanup plan)
+// Inlined here to keep this module self-contained without a cross-directory import.
+const TOKEN_KEY = 'wix_member_token';
+
+// ── Auth gate ────────────────────────────────────────────────────────────────
+const token = localStorage.getItem(TOKEN_KEY);
+if (!token) {
+    window.location.href = '../index.html';
+}
+
+// ── Room ID from URL or default ──────────────────────────────────────────────
+const roomId = new URLSearchParams(window.location.search).get('room') || 'main';
+document.getElementById('room-name').textContent = `Room: ${roomId}`;
+
+// ── Wire up modules ──────────────────────────────────────────────────────────
+const signaling = new SignalingClient();
+let meeting, roberts, selfId;
+let initialized = false;  // guard against re-init on reconnect
+
+signaling.addEventListener('welcome', async ({ detail }) => {
+    if (initialized) return;  // reconnect sends welcome again — skip re-init
+    initialized = true;
+    selfId  = detail.self_id;
+    meeting = new MeetingClient(signaling, selfId);
+    roberts = new RobertsUI(signaling, selfId);
+    roberts.bindButtons();
+
+    // Chair: set speaker time button
+    document.getElementById('btn-set-time')?.addEventListener('click', () => {
+        const secs = parseInt(document.getElementById('speaker-time-input').value);
+        signaling.send({ type: 'set_speaker_time', seconds: secs });
+    });
+
+    try {
+        await meeting.init();
+    } catch (e) {
+        showError('Camera/mic access denied — audio/video unavailable.');
+    }
+});
+
+let prevMemberIds = new Set();
+
+signaling.addEventListener('state', async ({ detail }) => {
+    const state = detail.state;
+    if (!roberts || !meeting) return;
+
+    roberts.applyState(state);
+    meeting.highlightSpeaker(state.current_speaker);
+
+    // Remove peers who left since last state update
+    const currentIds = new Set(state.members.map(m => m.id));
+    for (const id of prevMemberIds) {
+        if (!currentIds.has(id) && id !== selfId) {
+            meeting.removePeer(id);
+        }
+    }
+    prevMemberIds = currentIds;
+
+    // Connect to any new peers
+    for (const m of state.members) {
+        if (m.id !== selfId) await meeting.connectTo(m.id);
+    }
+});
+
+signaling.addEventListener('signal', async ({ detail }) => {
+    await meeting?.handleSignal(detail.from, detail.signal_type, detail);
+});
+
+signaling.addEventListener('error', ({ detail }) => {
+    showError(detail.message);
+});
+
+function showError(msg) {
+    const el = document.getElementById('error-banner');
+    el.textContent = msg;
+    el.style.display = '';
+    setTimeout(() => { el.style.display = 'none'; }, 5000);
+}
+
+signaling.connect(token, roomId);
+</script>
+</body>
+</html>
