@@ -38,6 +38,15 @@ def test_validate_jwt_wrong_audience():
     with pytest.raises(Exception):
         _validate_jwt(bad)
 
+def test_validate_jwt_wrong_issuer():
+    import time
+    bad = pyjwt.encode(
+        {"sub": "x", "iss": "wrong-issuer", "aud": "my-attached-app", "exp": int(time.time()) + 3600},
+        SECRET, algorithm="HS256"
+    )
+    with pytest.raises(Exception):
+        _validate_jwt(bad)
+
 def test_room_to_dict_no_motion():
     from server import _room_to_dict
     room = Room(room_id="r1")

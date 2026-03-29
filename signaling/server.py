@@ -257,6 +257,7 @@ async def _handle_leave(room_id: str, member_id: str) -> None:
             room.phase = "open"
 
     if room.phase == "voting" and was_chair:
+        await _broadcast_state(room_id)
         asyncio.create_task(_close_vote(room_id))
         return
 
@@ -383,8 +384,8 @@ async def _handle_message(room_id: str, member_id: str,
     if mtype == "set_speaker_time":
         if not _is_chair(room, member_id):
             return await _send_error(ws, "only the chair can set speaker time")
-        if room.phase != "open":
-            return await _send_error(ws, "can only set speaker time in open phase")
+        if room.phase not in ("open", "floor_held"):
+            return await _send_error(ws, "can only set speaker time when no business is pending")
         if room.current_speaker is not None:
             return await _send_error(ws, "cannot change speaker time while someone has the floor")
         secs = msg.get("seconds")
