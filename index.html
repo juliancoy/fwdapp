@@ -254,21 +254,31 @@
           }
         }
 
-        // Verify token signature (placeholder - implement with Wix JWKS or backend endpoint)
+        // Verify token claims (expiry + issuer/audience).
+        // Note: HMAC signature verification requires a backend endpoint since
+        // the shared secret cannot be safely embedded in client-side JS.
         async function verifyToken(token) {
-          // TODO: Implement proper JWT verification
-          // Option 1: Call your backend endpoint that verifies with Wix JWKS
-          // Option 2: Use Wix public key to verify locally
-          // For now, we decode and check expiration
           const payload = parseJwt(token);
           if (!payload) return null;
-          
-          // Check expiration
+
+          // Reject expired tokens
           if (payload.exp && Date.now() >= payload.exp * 1000) {
             console.log('Token expired');
             return null;
           }
-          
+
+          // Reject tokens not issued by the Wix site
+          if (payload.iss !== 'marylandforwardparty.com') {
+            console.error('Token issuer mismatch:', payload.iss);
+            return null;
+          }
+
+          // Reject tokens not intended for this app
+          if (payload.aud !== 'FWD.marylandforwardparty.com') {
+            console.error('Token audience mismatch:', payload.aud);
+            return null;
+          }
+
           return payload;
         }
 
@@ -344,10 +354,10 @@
           }
         }
 
-        // Login button - redirect to Wix main site login
+        // Login button - redirect to Wix login, then back to the page with
+        // the "Go to FWD App" button so the member can complete the token flow.
         loginBtn.addEventListener('click', function() {
-          // Redirect to Wix main site with return URL
-          const returnUrl = encodeURIComponent(window.location.href);
+          const returnUrl = encodeURIComponent(`${WIX_MAIN_SITE}/get-involved`);
           window.location.href = `${WIX_MAIN_SITE}/account/login?returnUrl=${returnUrl}`;
         });
 
